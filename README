@@ -1,0 +1,4 @@
+Santa2.ipynb seems to be the script with the most function algorithm at the moment. Temperature 
+is now down to 10**4.09, score is down to approximately 290483739445.4 for weighted 
+weariness... Simulated annealing seems to take a very long time. It would have been nice to
+speed this optimization process up with some fast code!
