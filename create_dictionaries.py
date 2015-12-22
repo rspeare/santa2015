@@ -6,7 +6,7 @@ print("creating Weight and Position Dictionaries wmap, xmap...")
 df = pd.read_csv('data/sample_submission.csv')
 dfG = pd.read_csv('data/gifts.csv')
 xmap={}
-res=[xmap.update({dfG.GiftId[i]:[dfG.Longitude[i],dfG.Latitude[i]]}) for i in np.arange(len(dfG))]
+res=[xmap.update({dfG.GiftId[i]:[dfG.Latitude[i],dfG.Longitude[i]]}) for i in np.arange(len(dfG))]
 wmap={}
 res=[wmap.update({dfG.GiftId[i]:dfG.Weight[i]}) for i in np.arange(len(dfG))]
 tmap={}

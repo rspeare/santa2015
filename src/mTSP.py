@@ -1,23 +1,31 @@
 import numpy as np
 import pickle
 from haversine import haversine
+import pandas as pd
 
 class mission:
     def __init__(self,Ntrips):
+        """
+        Creates an m-Traveling Salesmen object. Used for the Holiday
+        FICO kaggle competition, where Santa must deliever 
+        in as little distance -- or in this case, a specified metric
+        called reindeer weariness -- as possible. 
+        """
         self.dmap=pickle.load(open("../data/xmap.pickle","rb"))
         self.wmap=pickle.load(open("../data/wmap.pickle","rb"))
-        self.tmap=pickle.load(open("../data/tmap.pickle","rb"))
+#        self.tmap=pickle.load(open("../data/tmap.pickle","rb"))
+        self.tmap={}
         self.gifts=pickle.load(open("../data/GiftIds.pickle","rb"))
         self.trips=[[] for i in np.arange(Ntrips)]
 #        self.gifts=[item for sublist in self.trips for item in sublist]
 #        self.gifts=[i for i in np.arange(1,len(self.dmap.keys())+1)]
 
-        # Sleigh Weight and North Pole Location
+        # Sleigh Weight and North Pole Location, set identified as (-1)
         self.north_pole=[90.,0.]
         self.sleigh_weight=10.
         self.limit=1000.
-        self.dmap.update({0:self.north_pole})
-        self.wmap.update({0:self.sleigh_weight})
+        self.dmap.update({-1:self.north_pole})
+        self.wmap.update({-1:self.sleigh_weight})
 
     def init_trips(self,size):
         """
@@ -33,7 +41,7 @@ class mission:
             self.trips=[data[x:x+size] for x in np.arange(0, len(data), size)]
             msg=[[self.tmap.update({gift:[i,self.trips[i].index(gift)]}) for gift in self.trips[i]] for i in np.arange(len(self.trips))]
             break
-        return self.WRW()
+        return self.loss()
     
     def dist(self,g1,g2):
         """
@@ -52,7 +60,7 @@ class mission:
             if (s > self.limit):
                 raise ValueError(str(s)+' of mass in trip '+str(i)+' with packages '+str(trip)+' and weight ')
         
-    def trip_weariness(self,gifts,ii):
+    def trip_weariness2(self,gifts,ii):
         """
         Compute the weighted reindeer weariness
         of a trip, consisting of a sequence of Gifts.
@@ -62,9 +70,9 @@ class mission:
             return 0
         self.check_trip_load(gifts,ii)
 
-        tuples=[self.dmap[g] for g in gifts]
+        tuples=[self.dmap[g] for g in gifts[::-1]]
         tuples.append(self.north_pole)
-        weights=[self.wmap[g] for g in gifts]
+        weights=[self.wmap[g] for g in gifts[::-1]]
         weights.append(self.sleigh_weight)
 
         dist=0.0
@@ -77,7 +85,7 @@ class mission:
             prev_weight-=weight
         return dist
 
-    def trip_weariness2(self,gifts,ii):
+    def trip_weariness(self,gifts,ii):
         """
         Compute the weighted reindeer weariness
         of a trip, consisting of a sequence of Gifts.
@@ -87,21 +95,23 @@ class mission:
             return 0
         self.check_trip_load(gifts,ii)
 
-        load=self.sleigh_weight #self.wmap[0] # sleigh_weight
-#        print('load: ',load)
-        prev=0 # start at the north_pole
         dist=0.0
-        for g in gifts:
+        prev=-1 # start at the north_pole
+        load=self.wmap[prev] #sleigh_weight
+
+        for g in gifts[::-1]:
             next=g
             dist+=load*self.dist(prev,next)
             load+=self.wmap[next]
             prev=next
+
+        dist+=load*self.dist(next,-1)
         return dist
 
-    def pandas_trip_length(self,stops, weights): 
-        tuples = [tuple(x) for x in stops]
-    # adding the last trip back to north pole, with just the sleigh weight
+    def weighted_trip_length(self,trip): 
+        tuples = [self.dmap[g] for g in trip]
         tuples.append(self.north_pole)
+        weights = [self.wmap[g] for g in trip]
         weights.append(self.sleigh_weight)
     
         dist = 0.0
@@ -109,22 +119,20 @@ class mission:
         prev_weight = sum(weights)
         for location, weight in zip(tuples, weights):
             dist = dist + haversine(location, prev_stop) * prev_weight
+#            print(weight,location,dist)
             prev_stop = location
             prev_weight = prev_weight - weight
-        if (np.sum(weights)> self.limit):
-            return np.inf
-        else:
-            return dist
+        return dist
 
     def WRW3(self):
         dist=0.0
         for trip in self.trips:
-            stops=[self.dmap[g] for g in trip]
-            weights=[self.wmap[g] for g in trip]
-            dist +=self.pandas_trip_length(stops,weights)
+#            stops=[self.dmap[g] for g in trip]
+#            weights=[self.wmap[g] for g in trip]
+            dist +=self.weighted_trip_length(trip)
     
         return dist    
-    def WRW(self):
+    def loss(self):
         wrw=0.
         for i in np.arange(len(self.trips)):
             wrw+=self.trip_weariness(self.trips[i],i)
@@ -152,7 +160,6 @@ class mission:
             w2=self.wmap[g2]
         except TypeError:
             print('bad lookup at',[g1,g2])
-            
 
         self.trips[t1][i1]=g2
         self.trips[t2][i2]=g1
@@ -160,10 +167,46 @@ class mission:
         self.tmap.update({g2:[t1,i1]})
         return 0
 
-    def burn_in(self,m0,Temp):
+    def swap3(self,g1,g2,g3):
+        """
+        Swap two gift locations for their
+        order in the chain.
+        """
+        try:
+            t1,i1=self.tmap[g1]
+            t2,i2=self.tmap[g2]
+            t3,i3=self.tmap[g3]
+        except TypeError:
+            print('bad lookup at',g1,g2,g3)
+#        print(t1,t2,t3)
+#        print(i1,i2,i3)
+
+        self.trips[t1][i1]=g3
+        self.trips[t2][i2]=g1
+        self.trips[t3][i3]=g2
+
+#        self.trips[t1].remove(g1)
+#        self.trips[t2].remove(g2)
+#        self.trips[t3].remove(g3)
+#        self.trips[t1].insert(i1,g3)
+#        self.trips[t2].insert(i2,g1)
+#        self.trips[t3].insert(i3,g2)
+
+        self.tmap.update({g1:[t2,i2]})
+        self.tmap.update({g2:[t3,i3]})
+        self.tmap.update({g3:[t1,i1]})
+        return 0
+
+    def burn_swap(self,m0,Temp):
         mu=np.zeros(m0)
         for i in np.arange(m0):
             mu[i]=self.propose_swap(Temp)
+        return np.std(mu/Temp)
+
+    def burn_swap3(self,m0,Temp):
+        mu=np.zeros(m0)
+        for i in np.arange(m0):
+            mu[i]=self.propose_swap3(Temp)
         return np.std(mu/Temp)
 
     def propose_swap(self,Temp):
@@ -173,11 +216,14 @@ class mission:
             t2,i2=self.tmap[g2]
         except TypeError:
             print('bad lookup at',[g1,g2])
-        
-        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+
+        unique_trips= list(set([t1,t2]))
+        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
         self.swap(g1,g2)
         try:
-            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+            d2=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
         except ValueError:
             # infeasible swap
             self.swap(g1,g2)
@@ -185,7 +231,7 @@ class mission:
         if (d2 == np.inf):
             self.swap(g1,g2)
             return 0.
-#        d2=self.WRW()
+
         # If route improvement, accept the move
         if (d2 < d1):
             return d2-d1
@@ -199,16 +245,67 @@ class mission:
             else:
                 self.swap(g1,g2)
                 return 0.0
+
+    def propose_swap3(self,Temp):
+        g1,g2,g3=np.random.choice(self.gifts,3)
+        try:
+            t1,i1=self.tmap[g1]
+            t2,i2=self.tmap[g2]
+            t3,i3=self.tmap[g3]
+        except TypeError:
+            print('bad lookup at',[g1,g2,g3])
+
+        unique_trips= list(set([t1,t2,t3]))
+        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+        self.swap3(g1,g2,g3)
+        try:
+            d2=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+        except ValueError:
+            # infeasible swap
+            self.swap3(g1,g2,g3)
+            self.swap3(g1,g2,g3)
+            return 0.
+        if (d2 == np.inf):
+            self.swap3(g1,g2,g3)
+            self.swap3(g1,g2,g3)
+            return 0.
+
+        # If route improvement, accept the move
+        if (d2 < d1):
+            return d2-d1
+        else:
+            prob = np.exp((d1-d2)/Temp)
+            sample = np.random.rand()
+            # Accept move with probability e^(-delta/T)
+            if (sample < prob):
+                return d2-d1
+            # Reject move with probability 1-e^(-delta/T)
+            else:
+                self.swap3(g1,g2,g3)
+                self.swap3(g1,g2,g3)
+                return 0.0
+
+    def write_submission(self,filename):
+        with open(filename, 'w') as f:
+            f.write('GiftId,TripId\n')
+            for id in np.arange(len(self.trips)):
+                for g in self.trips[id]:
+                    f.writelines(str(g)+','+str(id)+'\n')
         
-    def export(filename):
-        f = open('../data/filename', 'w')
-        f.write('GiftId,TripId\n')
-        for i in np.arange(len(m.trips)):
-            for g in m.trips[i]:
-                f.write(str(g)+','+str(i)+'\n')
 
-        
+    def read_submission(self,filename):
+        sub=pd.read_csv(filename)
+        tripIds=sub['TripId'].unique()
+        self.trips=[[] for t in tripIds]
+        self.trips=[sub[sub['TripId']==t]['GiftId'].tolist() for t in tripIds]
+        msg=[[self.tmap.update({gift:[i,self.trips[i].index(gift)]}) for gift in self.trips[i]] for i in np.arange(len(self.trips))]
+        #[self.tmap.update({sub.GiftId[i]:[sub.TripId[i],]}) for i in np.arange(len(sub))]
 
-        
-
-
+    def check_tmap(self):
+        for g in self.gifts:
+ #           print(self.tmap[g])
+            [t,i]=self.tmap[g]
+            if (self.trips[t][i]!=g):
+                print('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))

@@ -14,3 +14,4 @@ res= [tmap.update({df.GiftId[i]:df.TripId[i]}) for i in np.arange(len(df))]
 pickle.dump(xmap,open("data/xmap.pickle","wb"))
 pickle.dump(wmap,open("data/wmap.pickle","wb"))
 pickle.dump(tmap,open("data/tmap.pickle","wb"))
+pickle.dump(dfG.GiftId,open("data/GiftIds.pickle","wb"))
