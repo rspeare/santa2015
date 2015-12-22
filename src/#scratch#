@@ -1,0 +1,14 @@
+def weighted_trip_length(stops, weights): 
+    tuples = [tuple(x) for x in stops.values]
+    # adding the last trip back to north pole, with just the sleigh weight
+    tuples.append(north_pole)
+    weights.append(sleigh_weight)
+    
+    dist = 0.0
+    prev_stop = north_pole
+    prev_weight = sum(weights)
+    for location, weight in zip(tuples, weights):
+        dist = dist + haversine(location, prev_stop) * prev_weight
+        prev_stop = location
+        prev_weight = prev_weight - weight
+    return dist

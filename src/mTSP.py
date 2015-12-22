@@ -58,27 +58,81 @@ class mission:
         of a trip, consisting of a sequence of Gifts.
         If the trip is infeasible, return infinity
         """
-        # if empty trip return zero
         if (len(gifts)==0):
             return 0
         self.check_trip_load(gifts,ii)
 
-#        gifts.append(0)
+        tuples=[self.dmap[g] for g in gifts]
+        tuples.append(self.north_pole)
+        weights=[self.wmap[g] for g in gifts]
+        weights.append(self.sleigh_weight)
+
+        dist=0.0
+        prev= self.north_pole
+        prev_weight=sum(weights)
+
+        for location,weight in zip(tuples,weights):
+            dist=dist+haversine(location,prev)*prev_weight
+            prev=location
+            prev_weight-=weight
+        return dist
+
+    def trip_weariness2(self,gifts,ii):
+        """
+        Compute the weighted reindeer weariness
+        of a trip, consisting of a sequence of Gifts.
+        If the trip is infeasible, return infinity
+        """
+        if (len(gifts)==0):
+            return 0
+        self.check_trip_load(gifts,ii)
+
         load=self.sleigh_weight #self.wmap[0] # sleigh_weight
 #        print('load: ',load)
         prev=0 # start at the north_pole
-        weary=0.0
-        for g in [0]+gifts:
+        dist=0.0
+        for g in gifts:
             next=g
-            weary+=load*self.dist(prev,next)
+            dist+=load*self.dist(prev,next)
             load+=self.wmap[next]
             prev=next
-        return weary
-            
+        return dist
+
+    def pandas_trip_length(self,stops, weights): 
+        tuples = [tuple(x) for x in stops]
+    # adding the last trip back to north pole, with just the sleigh weight
+        tuples.append(self.north_pole)
+        weights.append(self.sleigh_weight)
+    
+        dist = 0.0
+        prev_stop = self.north_pole
+        prev_weight = sum(weights)
+        for location, weight in zip(tuples, weights):
+            dist = dist + haversine(location, prev_stop) * prev_weight
+            prev_stop = location
+            prev_weight = prev_weight - weight
+        if (np.sum(weights)> self.limit):
+            return np.inf
+        else:
+            return dist
+
+    def WRW3(self):
+        dist=0.0
+        for trip in self.trips:
+            stops=[self.dmap[g] for g in trip]
+            weights=[self.wmap[g] for g in trip]
+            dist +=self.pandas_trip_length(stops,weights)
+    
+        return dist    
     def WRW(self):
         wrw=0.
         for i in np.arange(len(self.trips)):
             wrw+=self.trip_weariness(self.trips[i],i)
+        return wrw
+    def WRW2(self):
+        wrw=0.
+        for i in np.arange(len(self.trips)):
+            wrw+=self.trip_weariness2(self.trips[i],i)
         return wrw
 
     def swap(self,g1,g2):
@@ -146,6 +200,12 @@ class mission:
                 self.swap(g1,g2)
                 return 0.0
         
+    def export(filename):
+        f = open('../data/filename', 'w')
+        f.write('GiftId,TripId\n')
+        for i in np.arange(len(m.trips)):
+            for g in m.trips[i]:
+                f.write(str(g)+','+str(i)+'\n')
 
         
 
