@@ -153,10 +153,12 @@ class mission:
         for g in gifts[::-1]:
             next=g
             dist+=load*self.dist(prev,next)
+#            dist+=load*self.distMatrix[prev,next]
             load+=self.wmap[next]
             prev=next
 
         dist+=load*self.dist(next,-1)
+#        dist+=load*self.distMatrix[next,0]
         return dist
 
     def weighted_trip_length(self,trip): 
