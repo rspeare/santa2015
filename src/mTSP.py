@@ -1,7 +1,8 @@
 import numpy as np
 import pickle
 from haversine import haversine
-import pandas as pd
+import os
+import sys
 
 class mission:
     def __init__(self,Ntrips):
@@ -37,12 +38,23 @@ class mission:
 #        self.gifts=[item for sublist in self.trips for item in sublist]
 #        self.gifts=[i for i in np.arange(1,len(self.dmap.keys())+1)]
 
+#        self.distMatrix=np.zeros((len(self.gifts)+1,len(self.gifts)+1)).astype(np.float32)
+#        self.init_dist_matrix()
         # Sleigh Weight and North Pole Location, set identified as (-1)
         self.north_pole=[90.,0.]
         self.sleigh_weight=10.
         self.limit=1000.
         self.dmap.update({-1:self.north_pole})
         self.wmap.update({-1:self.sleigh_weight})
+
+    def init_dist_matrix(self):
+        print('initializing distance matrix...')
+        for g1 in self.gifts:
+            for g2 in self.gifts:
+                self.distMatrix[g1,g2]=haversine(self.dmap[g1],self.dmap[g2])
+        for g in self.gifts:
+            self.distMatrix[0,g]=haversine(self.north_pole,self.dmap[g])
+            self.distMatrix[g,0]=self.distMatrix[0,g]
 
     def init_trips(self,size):
         """
@@ -147,16 +159,19 @@ class mission:
         self.check_trip_load(gifts,ii)
 
         dist=0.0
-        prev=-1 # start at the north_pole
+        prev=-1# start at the north_pole
+#        prev=0# start at the north_pole #for matrix type
         load=self.wmap[prev] #sleigh_weight
 
         for g in gifts[::-1]:
             next=g
             dist+=load*self.dist(prev,next)
+#            dist+=load*self.distMatrix[prev,next]
             load+=self.wmap[next]
             prev=next
 
         dist+=load*self.dist(next,-1)
+#        dist+=load*self.distMatrix[next,0]
         return dist
 
     def weighted_trip_length(self,trip): 
@@ -412,6 +427,7 @@ class mission:
         
 
     def read_submission(self,filename):
+        import pandas as pd
         sub=pd.read_csv(filename)
         tripIds=sub['TripId'].unique()
         self.trips=[[] for t in tripIds]
@@ -425,3 +441,19 @@ class mission:
             t,i=self.tmap[g]
             if (self.trips[t][i]!=g):
                 raise ValueError('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))
+
+    def anneal(self,numtrips,t,m3):
+        i=0
+        while(True):
+            var2=self.burn_swap(m3,t)
+            var=self.burn_merge(m3,t)
+            print('score: '+str(self.loss())+' var2: '+str(var2))
+            self.check_tmap()
+            self.check_loads()
+            if (var2<3.0):
+                t*=.99
+                print('Log(T)',np.log(t)/np.log(10))
+            i+=1
+            if (i % 10 ==0):
+                self.write_submission('../data/'+str(numtrips)+'trips.csv')
+
