@@ -9,6 +9,7 @@ m.check_loads()
 m.check_tmap()
 
 def anneal(numtrips,t,m3):
+    i=0
     while(True):
         var2=m.burn_swap(m3,t)
         var=m.burn_merge(m3,t)
@@ -18,9 +19,7 @@ def anneal(numtrips,t,m3):
         if (var2<3.0):
             t*=.99
             print('Log(T)',np.log(t)/np.log(10))
-        m.write_submission('../data/'+str(numtrips)+'trips.csv')
-        os.system('cls' if os.name == 'nt' else 'clear')
-        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-            line = raw_input()
-            break
+        if (i%10 ==0):
+            m.write_submission('../data/'+str(numtrips)+'trips.csv')
+        i+=1
 

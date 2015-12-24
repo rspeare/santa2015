@@ -455,5 +455,6 @@ class mission:
                 print('Log(T)',np.log(t)/np.log(10))
             i+=1
             if (i % 10 ==0):
+                print('writing submission file')
                 self.write_submission('../data/'+str(numtrips)+'trips.csv')
 
