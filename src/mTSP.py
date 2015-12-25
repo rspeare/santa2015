@@ -276,10 +276,10 @@ class mission:
             mu[i]=self.propose_swap(Temp)
         return np.std(mu/Temp)
 
-    def burn_join(self,m0,Temp):
+    def burn_join(self,m0,Temp,trials):
         mu=np.zeros(m0)
         for i in np.arange(m0):
-            mu[i]=self.propose_join(Temp)
+            mu[i]=self.propose_join(Temp,trials)
         return np.std(mu/Temp)
 
     def burn_split(self,m0,Temp):
@@ -334,7 +334,7 @@ class mission:
             else:
                 return 0.0
 
-    def propose_join(self,Temp):
+    def propose_join(self,Temp,trials):
         g1,g2=np.random.choice(self.gifts,2)
 #        print(g1)
 #        print(self.tmap[g1])
@@ -366,8 +366,21 @@ class mission:
                 d2=test
                 bi=i # best index for insertion
 
+        # Try 10,000 random trials, to see of the joined trip can be made cheaper
+        total_trip=self.trips[t1]+self.trips[t2]
+        for i in np.arange(trials):
+            np.random.shuffle(total_trip)
+            test=self.trip_weariness(total_trip,-1)
+            if (test < d2):
+                bi=-1
+                d2=test
+                best_trip=total_trip
+
         if (d2 < d1):
-            self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
+            if (bi < 0):
+                self.trips[t1]=best_trip
+            else:
+                self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
             self.trips[t2]=[]
 #            print('reindexing list',t1)
             self.reindex_trip(t1)
@@ -380,7 +393,10 @@ class mission:
             # Accept move with probability e^(-delta/T)
             # update lookuptable
             if (sample < prob):
-                self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
+                if (bi < 0):
+                    self.trips[t1]=best_trip
+                else:
+                    self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
                 self.trips[t2]=[]
             #            print('reindexing list',t1)
                 self.reindex_trip(t1)
@@ -508,7 +524,7 @@ class mission:
             if (self.trips[t][i]!=g):
                 raise ValueError('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))
 
-    def anneal(self,numtrips,t,ms,mj,alpha):
+    def anneal(self,numtrips,t,ms,mj,alpha,trials):
         """
         anneal(N,T,m)
 
@@ -523,13 +539,17 @@ class mission:
         mj is the number of join split proposals per T. typically should be small
 
         alpha is the cooling schedule, T --> T*alpha, when equilibrium is reached.
+
+        trials is the number of random permutations to try when
+        attempting to join two trips. Essentially controls the strength of the
+        persuasion to join trips.
         """
         i=0
         while(True):
-            self.burn_split(mj,t)
+            print('split var',self.burn_split(mj,t))
             var2=self.burn_swap(ms,t)
             var=self.burn_merge(ms,t)
-            self.burn_join(mj,t)
+            print('join var',self.burn_join(mj,t,trials))
             print('score: '+str(self.loss())+' var2: '+str(var2))
             self.check_tmap()
             self.check_loads()

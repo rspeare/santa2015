@@ -270,46 +270,22 @@ class mission:
 #        self.tmap.update({g2:[t1,i1]})
         return 0
 
-    def swap3(self,g1,g2,g3):
-        """
-        Swap two gift locations for their
-        order in the chain.
-        """
-        try:
-            t1,i1=self.tmap[g1]
-            t2,i2=self.tmap[g2]
-            t3,i3=self.tmap[g3]
-        except TypeError:
-            print('bad lookup at',g1,g2,g3)
-
-        self.trips[t1][i1]=g3
-        self.trips[t2][i2]=g1
-        self.trips[t3][i3]=g2
-
-#        self.trips[t1].remove(g1)
-#        self.trips[t2].remove(g2)
-#        self.trips[t3].remove(g3)
-#        self.trips[t1].insert(i1,g3)
-#        self.trips[t2].insert(i2,g1)
-#        self.trips[t3].insert(i3,g2)
-        self.tmap[g1]=[t2,i2]
-        self.tmap[g2]=[t3,i3]
-        self.tmap[g3]=[t1,i1]
-#        self.tmap.update({g1:[t2,i2]})
-#        self.tmap.update({g2:[t3,i3]})
-#        self.tmap.update({g3:[t1,i1]})
-        return 0
-
     def burn_swap(self,m0,Temp):
         mu=np.zeros(m0)
         for i in np.arange(m0):
             mu[i]=self.propose_swap(Temp)
         return np.std(mu/Temp)
 
-    def burn_swap3(self,m0,Temp):
+    def burn_join(self,m0,Temp):
         mu=np.zeros(m0)
         for i in np.arange(m0):
-            mu[i]=self.propose_swap3(Temp)
+            mu[i]=self.propose_join(Temp)
+        return np.std(mu/Temp)
+
+    def burn_split(self,m0,Temp):
+        mu=np.zeros(m0)
+        for i in np.arange(m0):
+            mu[i]=self.propose_split(Temp)
         return np.std(mu/Temp)
 
     def burn_merge(self,m0,Temp):
@@ -317,6 +293,104 @@ class mission:
         for i in np.arange(m0):
             mu[i]=self.propose_merge(Temp)
         return np.std(mu/Temp)
+
+    def propose_split(self,Temp):
+        g1=np.random.choice(self.gifts,1)[0]
+#        print(g1)
+#        print(self.tmap[g1])
+        try:
+            t1,i1=self.tmap[g1]
+        except:
+            print('bad lookup at', g1)
+        d1=self.trip_weariness(self.trips[t1],t1)
+
+        trip1=self.trips[t1][:i1]
+        trip2=self.trips[t1][i1:]
+        if (len(trip1)+len(trip2) != len(self.trips[t1])):
+            raise ValueError('error, l1+l2 != l during split!')
+
+        d2=self.trip_weariness(trip1,t1)+self.trip_weariness(trip2,t1)
+
+        if (d2 < d1):
+            self.trips[t1]=trip1
+            self.trips.append(trip2)
+#            print('reindexing list',t1)
+            self.reindex_trip(t1)
+#            print('reindexing list',len(self.trips)-1)
+            self.reindex_trip(len(self.trips)-1)
+            return d2-d1
+        else:
+            prob = np.exp((d1-d2)/Temp)
+            sample = np.random.rand()
+            # Accept move with probability e^(-delta/T)
+            # update lookuptable
+            if (sample < prob):
+                self.trips[t1]=trip1
+                self.trips.append(trip2)
+                self.reindex_trip(t1)
+                self.reindex_trip(len(self.trips)-1)
+                return d2-d1
+            # Reject move with probability 1-e^(-delta/T)
+            else:
+                return 0.0
+
+    def propose_join(self,Temp):
+        g1,g2=np.random.choice(self.gifts,2)
+#        print(g1)
+#        print(self.tmap[g1])
+        try:
+            t1,i1=self.tmap[g1]
+            t2,i2=self.tmap[g2]
+        except:
+            print('bad lookup at', [g1,g2])
+        unique_trips= list(set([t1,t2]))
+        # Already joined
+        if (len(unique_trips)==1):
+            return 0.0
+
+        # Check to see of loads can be added
+        load1=self.check_trip_load(self.trips[t1],t1)
+        load2=self.check_trip_load(self.trips[t2],t2)
+        if (load1+load2 > self.limit - self.sleigh_weight):
+            return 0.0
+
+        # If valid join, calculate pre-join distance
+        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+
+        # Append trips
+        d2=np.inf
+        bi=0
+        for i in np.arange(len(self.trips[t1])):
+            test=self.trip_weariness(self.trips[t1][:i]+self.trips[t2]+self.trips[t1][i:],t1)
+            if (test < d2):
+                d2=test
+                bi=i # best index for insertion
+
+        if (d2 < d1):
+            self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
+            self.trips[t2]=[]
+#            print('reindexing list',t1)
+            self.reindex_trip(t1)
+#            print('reindexing list',len(self.trips)-1)
+            self.reindex_trip(t2)
+            return d2-d1
+        else:
+            prob = np.exp((d1-d2)/Temp)
+            sample = np.random.rand()
+            # Accept move with probability e^(-delta/T)
+            # update lookuptable
+            if (sample < prob):
+                self.trips[t1]=self.trips[t1][:bi]+self.trips[t2]+self.trips[t1][bi:]
+                self.trips[t2]=[]
+            #            print('reindexing list',t1)
+                self.reindex_trip(t1)
+            #            print('reindexing list',len(self.trips)-1)
+                self.reindex_trip(t2)
+                return d2-d1
+            # Reject move with probability 1-e^(-delta/T)
+            else:
+                return 0.0
+
 
     def propose_swap(self,Temp):
         g1,g2=np.random.choice(self.gifts,2)
@@ -353,47 +427,6 @@ class mission:
             # Reject move with probability 1-e^(-delta/T)
             else:
                 self.swap(g1,g2)
-                return 0.0
-
-    def propose_swap3(self,Temp):
-        g1,g2,g3=np.random.choice(self.gifts,3)
-        try:
-            t1,i1=self.tmap[g1]
-            t2,i2=self.tmap[g2]
-            t3,i3=self.tmap[g3]
-        except TypeError:
-            print('bad lookup at',[g1,g2,g3])
-
-        unique_trips= list(set([t1,t2,t3]))
-        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
-#        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
-        self.swap3(g1,g2,g3)
-        try:
-            d2=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
-#            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
-        except ValueError:
-            # infeasible swap
-            self.swap3(g1,g2,g3)
-            self.swap3(g1,g2,g3)
-            return 0.
-        if (d2 == np.inf):
-            self.swap3(g1,g2,g3)
-            self.swap3(g1,g2,g3)
-            return 0.
-
-        # If route improvement, accept the move
-        if (d2 < d1):
-            return d2-d1
-        else:
-            prob = np.exp((d1-d2)/Temp)
-            sample = np.random.rand()
-            # Accept move with probability e^(-delta/T)
-            if (sample < prob):
-                return d2-d1
-            # Reject move with probability 1-e^(-delta/T)
-            else:
-                self.swap3(g1,g2,g3)
-                self.swap3(g1,g2,g3)
                 return 0.0
 
     def reindex_trip(self,t):
@@ -475,30 +508,39 @@ class mission:
             if (self.trips[t][i]!=g):
                 raise ValueError('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))
 
-    def anneal(self,numtrips,t,m3):
+    def anneal(self,numtrips,t,ms,mj,alpha):
         """
         anneal(N,T,m)
 
-        N is the numbe of trips, the lenght of list of lists 
+        N is the numbe of trips, the length of list of lists 
         associated with the distribution schedule.
 
         T is initial temperature.
 
-        m is the number of iterations per temperature (needed
+        ms is the number of swap-merge iterations per temperature (needed
         to get to equilibrium).
+
+        mj is the number of join split proposals per T. typically should be small
+
+        alpha is the cooling schedule, T --> T*alpha, when equilibrium is reached.
         """
         i=0
         while(True):
-            var2=self.burn_swap(m3,t)
-            var=self.burn_merge(m3,t)
+            self.burn_split(mj,t)
+            var2=self.burn_swap(ms,t)
+            var=self.burn_merge(ms,t)
+            self.burn_join(mj,t)
             print('score: '+str(self.loss())+' var2: '+str(var2))
             self.check_tmap()
             self.check_loads()
             if (var2<3.0):
-                t*=.99
+                t*=alpha
                 print('Log(T)',np.log(t)/np.log(10))
             i+=1
             if (i % 10 ==0):
                 print('writing submission file')
+                # read, write operation allows for clean up with 
+                # growing number of trips
                 self.write_submission('../data/'+str(numtrips)+'trips.csv')
+                self.read_submission('../data/'+str(numtrips)+'trips.csv')
 
