@@ -3,6 +3,7 @@ import pickle
 from haversine import haversine
 import os
 import sys
+import pandas as pd
 
 class mission:
     def __init__(self,Ntrips):
@@ -98,7 +99,39 @@ class mission:
         self.check_loads()
         return self.loss()
 
-    
+    def init_trips_by_longitude(self):
+        """
+        Group trips by longitude. (Sorting initial array and assigning.
+        """
+        df=pd.read_csv('../data/gifts.csv')
+        dfs=df.sort_values(by='Longitude')
+        self.trips=[]
+        t=[]
+        load=0
+        j=0
+        for i in np.arange(len(dfs)):
+            load+=dfs.Weight.values[i]
+            if (load < self.limit-self.sleigh_weight):
+                t.append(dfs.GiftId.values[i])
+            else:
+                # If trip fully loaded, finish out and start
+                # new one
+                self.trips.append(t)
+                self.reindex_trip(j)
+                j+=1
+                t=[]
+                load=dfs.Weight.values[i]
+                t.append(dfs.GiftId.values[i])
+        t.append(dfs.GiftId.values[i])
+        self.trips.append(t)
+        self.reindex_trip(j)
+
+        self.check_loads()
+        self.check_tmap()
+        return self.loss()
+                
+
+
     def dist(self,g1,g2):
         """
         Compute the Haversine distance between two gifts
@@ -443,6 +476,17 @@ class mission:
                 raise ValueError('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))
 
     def anneal(self,numtrips,t,m3):
+        """
+        anneal(N,T,m)
+
+        N is the numbe of trips, the lenght of list of lists 
+        associated with the distribution schedule.
+
+        T is initial temperature.
+
+        m is the number of iterations per temperature (needed
+        to get to equilibrium).
+        """
         i=0
         while(True):
             var2=self.burn_swap(m3,t)
