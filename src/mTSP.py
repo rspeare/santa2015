@@ -1,8 +1,6 @@
 import numpy as np
 import pickle
 from haversine import haversine
-import os
-import sys
 import pandas as pd
 
 class mission:
@@ -69,7 +67,6 @@ class mission:
             data=[i for i in np.arange(1,len(self.gifts)+1)]
             np.random.shuffle(data)
             self.trips=[data[x:x+size] for x in np.arange(0, len(data), size)]
-            msg=[[self.tmap.update({gift:[i,self.trips[i].index(gift)]}) for gift in self.trips[i]] for i in np.arange(len(self.trips))]
             self.check_loads()
             break
         return self.loss()
@@ -157,29 +154,6 @@ class mission:
         for stop in trip:
             s+=self.wmap[stop]
         return s
-        
-    def trip_weariness2(self,gifts,ii):
-        """
-        DEPRECATED
-        """
-        if (len(gifts)==0):
-            return 0
-        self.check_trip_load(gifts,ii)
-
-        tuples=[self.dmap[g] for g in gifts[::-1]]
-        tuples.append(self.north_pole)
-        weights=[self.wmap[g] for g in gifts[::-1]]
-        weights.append(self.sleigh_weight)
-
-        dist=0.0
-        prev= self.north_pole
-        prev_weight=sum(weights)
-
-        for location,weight in zip(tuples,weights):
-            dist=dist+haversine(location,prev)*prev_weight
-            prev=location
-            prev_weight-=weight
-        return dist
 
     def trip_weariness(self,gifts,ii):
         """
@@ -206,74 +180,81 @@ class mission:
         dist+=load*self.dist(next,-1)
 #        dist+=load*self.distMatrix[next,0]
         return dist
-
-    def weighted_trip_length(self,trip): 
-        """
-        DEPRECATED
-        """
-        tuples = [self.dmap[g] for g in trip]
-        tuples.append(self.north_pole)
-        weights = [self.wmap[g] for g in trip]
-        weights.append(self.sleigh_weight)
-    
-        dist = 0.0
-        prev_stop = self.north_pole
-        prev_weight = sum(weights)
-        for location, weight in zip(tuples, weights):
-            dist = dist + haversine(location, prev_stop) * prev_weight
-#            print(weight,location,dist)
-            prev_stop = location
-            prev_weight = prev_weight - weight
-        return dist
-
-    def WRW3(self):
-        dist=0.0
-        for trip in self.trips:
-#            stops=[self.dmap[g] for g in trip]
-#            weights=[self.wmap[g] for g in trip]
-            dist +=self.weighted_trip_length(trip)
-    
-        return dist    
+   
     def loss(self):
         wrw=0.
         for i in np.arange(len(self.trips)):
             wrw+=self.trip_weariness(self.trips[i],i)
         return wrw
-    def WRW2(self):
-        wrw=0.
-        for i in np.arange(len(self.trips)):
-            wrw+=self.trip_weariness2(self.trips[i],i)
-        return wrw
 
-    def swap(self,g1,g2):
+
+    def propose_Kswap(self,K,Temp,giftset):
+        gifts=list(np.random.choice(giftset,2))
+        try:
+            index=[self.tmap[g] for g in gifts]
+        except TypeError:
+            print('bad lookup in Kswap')
+            
+        unique_trips= list(set([i[0] for i in index]))
+        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+        self.Kswap(gifts,1)
+        try:
+            d2=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
+#            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
+        except ValueError:
+            # infeasible swap
+            self.Kswap(gifts,-1)
+            return 0.
+        if (d2 == np.inf):
+            self.Kswap(gifts,-1)
+            return 0.
+
+        # If route improvement, accept the move
+        if (d2 < d1):
+            return d2-d1
+        else:
+            prob = np.exp((d1-d2)/Temp)
+            sample = np.random.rand()
+            # Accept move with probability e^(-delta/T)
+            if (sample < prob):
+                return d2-d1
+            # Reject move with probability 1-e^(-delta/T)
+            else:
+                self.Kswap(gifts,-1)
+                return 0.0 
+    def Kswap(self,gifts,direction):
         """
-        Swap two gift locations for their
+        Swap K gift locations for their
         order in the chain.
         """
         try:
-            t1,i1=self.tmap[g1]
-            t2,i2=self.tmap[g2]
+            index=[self.tmap[g] for g in gifts]
         except TypeError:
-            print('bad lookup at',g1,g2)
-        
-#        print('g,t,i,w: ',[g1,t1,i1],[g2,t2,i2])
-        try:
-            w1=self.wmap[g1]
-            w2=self.wmap[g2]
-        except TypeError:
-            print('bad lookup at',[g1,g2])
+            print('bad lookup in Kswap')
+            
+        # Perform a cyclic permutation of the list of 
+        # giftId's gifts, and update their location in the
+        # lookup table
+#        print(gifts)
+        if (direction > 0):
+            last=gifts.pop()
+            gifts.insert(0,last)
+        else:
+            first=gifts[0]
+            gifts.remove(first)
+            gifts.append(first)
+#        print(gifts)
+        for i,g in list(zip(index,gifts)):
+#            print(i,g)
+            self.trips[i[0]][i[1]]=g
+            self.tmap[g]=[i[0],i[1]]
 
-        self.trips[t1][i1]=g2
-        self.trips[t2][i2]=g1
-        self.tmap[g1]=[t2,i2]
-        self.tmap[g2]=[t1,i1]
-#        self.tmap.update({g2:[t1,i1]})
-        return 0
-
-    def burn_swap(self,m0,Temp):
+        return 
+    def burn_Kswap(self,k,m0,Temp,giftset):
         mu=np.zeros(m0)
         for i in np.arange(m0):
-            mu[i]=self.propose_swap(Temp)
+            mu[i]=self.propose_Kswap(k,Temp,giftset)
         return np.std(mu/Temp)
 
     def burn_join(self,m0,Temp,trials):
@@ -290,14 +271,22 @@ class mission:
 
     def burn_merge(self,m0,Temp):
         mu=np.zeros(m0)
+        
         for i in np.arange(m0):
-            mu[i]=self.propose_merge(Temp)
+            lengths=np.array([len(t) for t in self.trips])
+            sindex=np.argsort(lengths)
+            j=0
+            while(len(self.trips[sindex[j]])==0):
+                j+=1
+#            print(self.trips[sindex[j]])
+            mu[i]=self.propose_merge(Temp,self.trips[sindex[j]]+self.trips[sindex[j+1]]+self.trips[sindex[j+2]])
         return np.std(mu/Temp)
 
     def propose_split(self,Temp):
         g1=np.random.choice(self.gifts,1)[0]
 #        print(g1)
 #        print(self.tmap[g1])
+        handicap=10**6
         try:
             t1,i1=self.tmap[g1]
         except:
@@ -309,9 +298,9 @@ class mission:
         if (len(trip1)+len(trip2) != len(self.trips[t1])):
             raise ValueError('error, l1+l2 != l during split!')
 
-        d2=self.trip_weariness(trip1,t1)+self.trip_weariness(trip2,t1)
+        d2=self.trip_weariness(trip1,t1)+self.trip_weariness(trip2,t1)+handicap
 
-        if (d2 < d1):
+        if (d2 < d1 ):
             self.trips[t1]=trip1
             self.trips.append(trip2)
 #            print('reindexing list',t1)
@@ -405,53 +394,61 @@ class mission:
                 return d2-d1
             # Reject move with probability 1-e^(-delta/T)
             else:
-                return 0.0
+                return 0.0                
+               
+    def reorder_trip(self,t):
+        trip=self.trips[t]
+        best=self.trip_weariness(trip,0)
+        load1=sum([self.wmap[g] for g in self.trips[t]])
+        for i in np.arange(len(self.trips[t])):
+#            print(i)
+            newtrip=np.concatenate([trip[i:],trip[:i]])
+            newscore=self.trip_weariness(newtrip,0)
+            if (newscore < best):
+#                print('trip '+str(t)+' improved!',best-newscore)
+                self.trips[t]=list(newtrip)
+                best=newscore
+        load2=sum([self.wmap[g] for g in self.trips[t]])
+        if (not np.isclose(load2,load1)):
+            raise ValueError("loads are unequal after reordering. Trip: "+str(t)+"load1 "+str(load1)+"load2 "+str(load2))
+        self.reindex_trip(t)
 
+    def reorder_all_trips(self):
+        for t in np.arange(len(self.trips)):
+            self.reorder_trip(t)
+            
+    def diff(self,a, b):
+        """
+        Compute the difference between two lists:
+        
+        A = [1,2,3,4]
+        B = [2,5]
 
-    def propose_swap(self,Temp):
-        g1,g2=np.random.choice(self.gifts,2)
-        try:
-            t1,i1=self.tmap[g1]
-            t2,i2=self.tmap[g2]
-        except TypeError:
-            print('bad lookup at',[g1,g2])
-
-        unique_trips= list(set([t1,t2]))
-        d1=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
-#        d1=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
-        self.swap(g1,g2)
-        try:
-            d2=sum([self.trip_weariness(self.trips[t],t) for t in unique_trips])
-#            d2=self.trip_weariness(self.trips[t1],t1)+self.trip_weariness(self.trips[t2],t2)
-        except ValueError:
-            # infeasible swap
-            self.swap(g1,g2)
-            return 0.
-        if (d2 == np.inf):
-            self.swap(g1,g2)
-            return 0.
-
-        # If route improvement, accept the move
-        if (d2 < d1):
-            return d2-d1
-        else:
-            prob = np.exp((d1-d2)/Temp)
-            sample = np.random.rand()
-            # Accept move with probability e^(-delta/T)
-            if (sample < prob):
-                return d2-d1
-            # Reject move with probability 1-e^(-delta/T)
-            else:
-                self.swap(g1,g2)
-                return 0.0
-
+        A - B = [1,3,4]
+        B - A = [5]
+        """
+        b = set(b)
+        return [aa for aa in a if aa not in b]  
     def reindex_trip(self,t):
         for i in np.arange(len(self.trips[t])):
             g=self.trips[t][i]
             self.tmap[g]=[t,i]
+    def index_trips(self):
+        self.tmap={}
+        print('indexing now...')
+        for t in np.arange(len(self.trips)):
+#            self.reindex_trip(t)
+            for i in np.arange(len(self.trips[t])):
+                g=self.trips[t][i]
+                self.tmap.update({g:[t,i]})
 
-    def propose_merge(self,Temp):
-        g1,g2=np.random.choice(self.gifts,2)
+    def propose_merge(self,Temp,gifts):
+        """
+        Given a set of gifts, propose to merge one of them 
+        into the rest of the total gift set. 
+        """
+        g1=np.random.choice(gifts,1)[0]
+        g2=np.random.choice(self.diff(self.gifts,gifts),1)[0]
         try:
             t1,i1=self.tmap[g1]
             t2,i2=self.tmap[g2]
@@ -511,16 +508,18 @@ class mission:
     def read_submission(self,filename):
         import pandas as pd
         sub=pd.read_csv(filename)
-        tripIds=sub['TripId'].unique()
+        tripIds=sub.TripId.unique()
         self.trips=[[] for t in tripIds]
         self.trips=[sub[sub['TripId']==t]['GiftId'].tolist() for t in tripIds]
-        msg=[[self.tmap.update({gift:[i,self.trips[i].index(gift)]}) for gift in self.trips[i]] for i in np.arange(len(self.trips))]
-        #[self.tmap.update({sub.GiftId[i]:[sub.TripId[i],]}) for i in np.arange(len(sub))]
+        print('getting ready to index trips')
+        self.index_trips()
 
     def check_tmap(self):
         for g in self.gifts:
-#            print(g,self.tmap[g])
-            t,i=self.tmap[g]
+            try:
+                t,i=self.tmap[g]
+            except:
+                raise ValueError('bad look up atg= ',g)
             if (self.trips[t][i]!=g):
                 raise ValueError('bad look up at for gift '+str(g)+' at trip,index '+str(t)+','+str(i))
 
@@ -547,7 +546,7 @@ class mission:
         i=0
         while(True):
             print('split var',self.burn_split(mj,t))
-            var2=self.burn_swap(ms,t)
+            var2=self.burn_Kswap(2,ms,t)
             var=self.burn_merge(ms,t)
             print('join var',self.burn_join(mj,t,trials))
             print('score: '+str(self.loss())+' var2: '+str(var2))
